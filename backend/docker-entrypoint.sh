@@ -1,3 +1,4 @@
+
 #!/bin/sh
 set -eu
 
@@ -6,13 +7,14 @@ echo "Iniciando ProfitGuard..."
 if [ -n "${DATABASE_URL:-}" ]; then
   case "$DATABASE_URL" in
     jdbc:postgresql://*)
-      export DB_URL="$DATABASE_URL"
+      DB_CONNECTION="${DATABASE_URL#jdbc:postgresql://}"
+      DB_CONNECTION="${DB_CONNECTION#*@}"
+      export DB_URL="jdbc:postgresql://${DB_CONNECTION}"
       ;;
-    postgresql://*)
-      export DB_URL="jdbc:postgresql://${DATABASE_URL#postgresql://}"
-      ;;
-    postgres://*)
-      export DB_URL="jdbc:postgresql://${DATABASE_URL#postgres://}"
+    postgresql://*|postgres://*)
+      DB_CONNECTION="${DATABASE_URL#*://}"
+      DB_CONNECTION="${DB_CONNECTION#*@}"
+      export DB_URL="jdbc:postgresql://${DB_CONNECTION}"
       ;;
     *)
       echo "ERRO: Formato de DATABASE_URL desconhecido."
