@@ -1,18 +1,33 @@
+
 #!/bin/sh
 set -eu
 
-# O Render fornece DATABASE_URL no formato postgresql://.
-# O driver JDBC do Spring precisa do prefixo jdbc:postgresql://.
+echo "Iniciando ProfitGuard..."
+
 if [ -n "${DATABASE_URL:-}" ]; then
   case "$DATABASE_URL" in
-    jdbc:postgresql://*) export DB_URL="$DATABASE_URL" ;;
-    postgresql://*) export DB_URL="jdbc:postgresql://${DATABASE_URL#postgresql://}" ;;
-    postgres://*) export DB_URL="jdbc:postgresql://${DATABASE_URL#postgres://}" ;;
+    jdbc:postgresql://*)
+      export DB_URL="$DATABASE_URL"
+      ;;
+    postgresql://*)
+      export DB_URL="jdbc:postgresql://${DATABASE_URL#postgresql://}"
+      ;;
+    postgres://*)
+      export DB_URL="jdbc:postgresql://${DATABASE_URL#postgres://}"
+      ;;
+    *)
+      echo "ERRO: Formato de DATABASE_URL desconhecido."
+      exit 1
+      ;;
   esac
 fi
 
-: "${DB_URL:?Configure DATABASE_URL no serviço ou DB_URL manualmente.}"
-: "${DB_USERNAME:?Configure DB_USERNAME.}"
-: "${DB_PASSWORD:?Configure DB_PASSWORD.}"
+: "${DB_URL:?DATABASE_URL ou DB_URL não configurada}"
+: "${DB_USERNAME:?DB_USERNAME não configurada}"
+: "${DB_PASSWORD:?DB_PASSWORD não configurada}"
+
+echo "URL JDBC configurada."
+echo "Usuário do banco configurado."
+echo "Iniciando aplicação Spring Boot..."
 
 exec java -jar /app/app.jar
