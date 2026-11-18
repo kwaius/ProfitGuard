@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: profitguard-backend
+  datasource:
+    # Banco local em arquivo: os dados continuam salvos depois que a API é fechada.
+    url: jdbc:h2:file:./data/profitguard;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    open-in-view: false
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+server:
+  port: ${PORT:8080}
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax
+
+app:
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://localhost:3000}
+  demo-user:
+    enabled: ${DEMO_USER_ENABLED:true}
+    email: ${DEMO_USER_EMAIL:demo@profitguard.com}
+    password: ${DEMO_USER_PASSWORD:Profit@12345}
+    name: ${DEMO_USER_NAME:Conta de Demonstração}

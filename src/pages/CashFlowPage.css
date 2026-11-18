@@ -1,0 +1,136 @@
+.cashflow-status-card,
+.cashflow-setting-card,
+.cashflow-kpi-card,
+.cashflow-form-card,
+.cashflow-panel,
+.cashflow-history-note {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface, #fff);
+  box-shadow: 0 5px 20px rgba(15, 23, 42, .035);
+}
+
+.cashflow-status-card {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 18px 20px;
+  margin-bottom: 18px;
+  border-left: 4px solid #9ca3af;
+}
+
+.cashflow-status-card.status-danger { border-left-color: #dc2626; }
+.cashflow-status-card.status-warning { border-left-color: #d97706; }
+.cashflow-status-card.status-healthy { border-left-color: #16a34a; }
+.cashflow-status-card.status-limited { border-left-color: #6474db; }
+.cashflow-status-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: var(--bg);
+  font-size: 21px;
+}
+.cashflow-status-copy { flex: 1; min-width: 0; }
+.cashflow-status-copy strong { display: block; margin-bottom: 5px; font-size: 15px; }
+.cashflow-status-copy p { color: var(--text-secondary); font-size: 13px; line-height: 1.55; }
+
+.cashflow-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.cashflow-setting-card { display: flex; flex-direction: column; gap: 9px; padding: 19px; }
+.cashflow-setting-card > span { font-size: 13px; font-weight: 700; }
+.cashflow-money-input { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+.cashflow-money-input span { color: var(--text-secondary); font-size: 13px; font-weight: 700; }
+.cashflow-money-input input { min-width: 0; width: 100%; color: var(--text); background: transparent; border: 0; outline: none; font: inherit; font-size: 15px; }
+.cashflow-setting-card small { color: var(--text-secondary); font-size: 11px; line-height: 1.45; }
+
+.cashflow-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 15px; margin-bottom: 20px; }
+.cashflow-kpi-card { display: flex; flex-direction: column; gap: 9px; padding: 19px; min-width: 0; }
+.cashflow-kpi-card > span { color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
+.cashflow-kpi-card strong { font-size: clamp(17px, 2vw, 23px); overflow-wrap: anywhere; letter-spacing: -.5px; }
+.cashflow-kpi-card small { color: var(--text-secondary); font-size: 10px; line-height: 1.45; }
+.cashflow-positive { color: #16a34a !important; }
+.cashflow-negative { color: #dc2626 !important; }
+
+.cashflow-form-card, .cashflow-panel { padding: 22px; margin-bottom: 20px; }
+.cashflow-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.cashflow-section-heading h3 { margin: 0 0 6px; font-size: 17px; }
+.cashflow-section-heading p { color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+.cashflow-data-count { padding: 7px 10px; border-radius: 20px; color: var(--text-secondary); background: var(--bg); font-size: 11px; white-space: nowrap; }
+.cashflow-form-grid { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 13px; }
+.cashflow-form-grid label { display: flex; flex-direction: column; gap: 8px; color: var(--text-secondary); font-size: 12px; font-weight: 700; }
+.cashflow-form-grid input, .cashflow-form-grid select { width: 100%; min-width: 0; min-height: 42px; padding: 10px 11px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 9px; font: inherit; font-size: 13px; }
+.cashflow-form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 17px; }
+.cashflow-form-error { margin-top: 12px; color: #dc2626; font-size: 12px; }
+
+.cashflow-projection-list { display: flex; flex-direction: column; gap: 17px; }
+.cashflow-projection-row { display: grid; grid-template-columns: 145px minmax(80px, 1fr) minmax(120px, 165px); align-items: center; gap: 16px; }
+.cashflow-projection-label strong { display: block; font-size: 13px; margin-bottom: 4px; }
+.cashflow-projection-label span { color: var(--text-secondary); font-size: 11px; }
+.cashflow-bar-track { overflow: hidden; height: 10px; border-radius: 50px; background: var(--bg); }
+.cashflow-bar { height: 100%; border-radius: inherit; background: linear-gradient(90deg, #6366f1, #8b5cf6); transition: width .25s ease; }
+.cashflow-bar.is-negative { background: #dc2626; }
+.cashflow-projection-row > strong { text-align: right; font-size: 13px; }
+.cashflow-empty-note { display: flex; align-items: flex-start; gap: 12px; margin-top: 22px; padding: 15px; border-radius: 12px; background: var(--bg); }
+.cashflow-empty-note > span { font-size: 20px; }
+.cashflow-empty-note strong { display: block; font-size: 12px; margin-bottom: 5px; }
+.cashflow-empty-note p { color: var(--text-secondary); font-size: 12px; line-height: 1.55; }
+
+.cashflow-empty-state { display: flex; align-items: center; flex-direction: column; padding: 25px 10px 15px; text-align: center; }
+.cashflow-empty-state > div { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 15px; margin-bottom: 12px; background: var(--bg); font-size: 25px; }
+.cashflow-empty-state strong { margin-bottom: 6px; font-size: 14px; }
+.cashflow-empty-state p { max-width: 430px; margin-bottom: 16px; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+.cashflow-table-wrap { overflow-x: auto; }
+.cashflow-table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
+.cashflow-table th { padding: 11px 12px; border-bottom: 1px solid var(--border); color: var(--text-secondary); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+.cashflow-table td { padding: 14px 12px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.cashflow-table tr:last-child td { border-bottom: 0; }
+.cashflow-table td:first-child strong { display: block; font-weight: 700; }
+.cashflow-overdue-badge { display: inline-block; margin-top: 5px; padding: 3px 6px; border-radius: 5px; color: #b91c1c; background: #fee2e2; font-size: 10px; }
+.cashflow-type-pill { display: inline-block; padding: 5px 8px; border-radius: 20px; font-size: 10px; font-weight: 700; }
+.cashflow-type-pill.income { color: #15803d; background: #dcfce7; }
+.cashflow-type-pill.expense { color: #b91c1c; background: #fee2e2; }
+.cashflow-row-actions { display: flex; gap: 8px; }
+.cashflow-row-actions button { padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; color: var(--text); background: transparent; font: inherit; font-size: 10px; cursor: pointer; }
+.cashflow-row-actions .delete { color: #dc2626; }
+.cashflow-row-actions button:hover { border-color: #818cf8; }
+.cashflow-history-note { display: flex; gap: 13px; padding: 18px; }
+.cashflow-history-icon { display: grid; flex: 0 0 42px; place-items: center; width: 42px; height: 42px; border-radius: 12px; background: var(--bg); font-size: 20px; }
+.cashflow-history-note strong { display: block; margin-bottom: 6px; font-size: 13px; }
+.cashflow-history-note p { margin-bottom: 6px; font-size: 12px; line-height: 1.5; }
+.cashflow-history-note small { color: var(--text-secondary); font-size: 11px; line-height: 1.5; }
+
+@media (max-width: 1080px) {
+  .cashflow-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cashflow-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .cashflow-status-card { align-items: flex-start; flex-wrap: wrap; }
+  .cashflow-status-card .module-secondary-button { width: 100%; }
+  .cashflow-settings-grid, .cashflow-kpi-grid { grid-template-columns: 1fr; }
+  .cashflow-form-grid { grid-template-columns: 1fr; }
+  .cashflow-section-heading { flex-direction: column; }
+  .cashflow-projection-row { grid-template-columns: 85px minmax(50px, 1fr); gap: 10px; }
+  .cashflow-projection-row > strong { grid-column: 2; text-align: left; }
+  .cashflow-projection-label span { font-size: 10px; }
+  .cashflow-form-actions { flex-direction: column-reverse; }
+  .cashflow-form-actions button { width: 100%; }
+  .cashflow-panel, .cashflow-form-card { padding: 16px; }
+  .cashflow-history-note { padding: 14px; }
+}
+
+body.dark .cashflow-kpi-card,
+body.dark .cashflow-setting-card,
+body.dark .cashflow-status-card,
+body.dark .cashflow-panel,
+body.dark .cashflow-form-card,
+body.dark .cashflow-history-note { background: #111c30; }
+body.dark .cashflow-type-pill.income { color: #86efac; background: #14532d; }
+body.dark .cashflow-type-pill.expense { color: #fca5a5; background: #7f1d1d; }
+body.dark .cashflow-overdue-badge { color: #fecaca; background: #7f1d1d; }

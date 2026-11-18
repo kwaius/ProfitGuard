@@ -1,0 +1,35 @@
+spring:
+  datasource:
+    # DATABASE_URL do Render é convertida para JDBC pelo docker-entrypoint.sh.
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    open-in-view: false
+  h2:
+    console:
+      enabled: false
+
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: framework
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: none
+        secure: true
+
+app:
+  cors:
+    # Acesso pelo proxy Vercel; mantenha o domínio do projeto autorizado.
+    allowed-origins: ${CORS_ORIGINS:https://*.vercel.app}
+  demo-user:
+    enabled: ${DEMO_USER_ENABLED:false}
+    email: ${DEMO_USER_EMAIL:}
+    password: ${DEMO_USER_PASSWORD:}
+    name: ${DEMO_USER_NAME:Administrador}

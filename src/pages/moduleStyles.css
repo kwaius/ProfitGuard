@@ -1,0 +1,70 @@
+.module-page {
+  width: 100%;
+  color: var(--text);
+  padding-bottom: 32px;
+}
+
+.module-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 0 0 26px;
+}
+
+.module-eyebrow {
+  display: inline-block;
+  margin-bottom: 8px;
+  color: #6474db;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.3px;
+}
+
+.module-page-header h2 {
+  margin: 0 0 8px;
+  font-size: clamp(25px, 3vw, 32px);
+  letter-spacing: -0.8px;
+}
+
+.module-page-header p {
+  max-width: 740px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.module-primary-button,
+.module-secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 42px;
+  border-radius: 10px;
+  padding: 10px 15px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform .15s ease, background .15s ease, border-color .15s ease;
+}
+
+.module-primary-button {
+  color: #fff;
+  background: #4f46e5;
+  border: 1px solid #4f46e5;
+}
+
+.module-primary-button:hover { background: #4338ca; transform: translateY(-1px); }
+
+.module-secondary-button {
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.module-secondary-button:hover { border-color: #818cf8; }
+
+@media (max-width: 700px) {
+  .module-page-header { flex-direction: column; }
+}

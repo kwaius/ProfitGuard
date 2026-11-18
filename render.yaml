@@ -1,0 +1,45 @@
+# Blueprint para hospedar o backend Spring Boot e o PostgreSQL no Render.
+# A URL pública do serviço é usada no vercel.json como proxy.
+services:
+  - type: web
+    name: profitguard-backend-demo
+    runtime: docker
+    plan: free
+    region: ohio
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /api/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: JAVA_TOOL_OPTIONS
+        value: -XX:MaxRAMPercentage=70.0 -XX:+UseSerialGC
+      - key: DATABASE_URL
+        fromDatabase:
+          name: profitguard-db
+          property: connectionString
+      - key: DB_USERNAME
+        fromDatabase:
+          name: profitguard-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: profitguard-db
+          property: password
+      - key: CORS_ORIGINS
+        value: https://*.vercel.app
+      - key: DEMO_USER_ENABLED
+        value: "true"
+      - key: DEMO_USER_EMAIL
+        value: demo@profitguard.com
+      - key: DEMO_USER_PASSWORD
+        sync: false
+      - key: DEMO_USER_NAME
+        value: Conta de Demonstração
+
+databases:
+  - name: profitguard-db
+    databaseName: profitguard
+    user: profitguard
+    plan: free
+    region: ohio
