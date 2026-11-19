@@ -159,7 +159,7 @@ async function fetchGroqWithFallback(apiKey, payload) {
   let lastError = null;
 
   for (const model of uniqueModels) {
-    const response = await fetch(GROQ_URL, {
+    let response = await fetch(GROQ_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -171,12 +171,28 @@ async function fetchGroqWithFallback(apiKey, payload) {
       }),
     });
 
+    // Se a Groq recusar o formato de tools (400), tenta novamente sem tools
+    if (!response.ok && response.status === 400 && payload.tools) {
+      const { tools: _ignoredTools, tool_choice: _ignoredChoice, ...payloadWithoutTools } = payload;
+      response = await fetch(GROQ_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          ...payloadWithoutTools,
+          model,
+        }),
+      });
+    }
+
     if (response.ok) {
       return response;
     }
 
     const errorText = await response.text();
-    lastError = new Error(`Groq API (${model}) ${response.status}: ${errorText}`);
+    lastError = new Error(`Groq (${model}) HTTP ${response.status}: ${errorText.slice(0, 140)}`);
 
     if (response.status === 429 || response.status >= 500) {
       console.warn(`Fallback Groq ativado após falha em ${model} (${response.status})`);
@@ -254,7 +270,7 @@ function formatBRL(value) {
   }).format(Number(value) || 0);
 }
 
-function buildEmergencyResponse(message, analysis, transactions) {
+function buildEmergencyResponse(message, analysis, transactions, reason = '') {
   const text = String(message || '')
     .toLowerCase()
     .normalize('NFD')
@@ -264,6 +280,7 @@ function buildEmergencyResponse(message, analysis, transactions) {
   const expenses = Number(analysis?.expenses || 0);
   const profit = Number(analysis?.profit ?? revenue - expenses);
   const margin = Number(analysis?.margin || 0);
+  const diagnosticNote = reason ? `\n\n> ⚠️ *Diagnóstico: ${reason}*` : '';
 
   if (text.includes('maior despesa') || text.includes('maiores despesas')) {
     const top = getTopExpenses(transactions, 5);
@@ -274,7 +291,7 @@ function buildEmergencyResponse(message, analysis, transactions) {
             `${i + 1}. **${item.description || 'Despesa'}** (${item.category || 'Geral'}): **${formatBRL(item.value)}**`
         )
         .join('\n');
-      return `📊 Aqui estão as suas maiores despesas registradas:\n\n${list}`;
+      return `📊 Aqui estão as suas maiores despesas registradas:\n\n${list}${diagnosticNote}`;
     }
   }
 
@@ -286,7 +303,8 @@ function buildEmergencyResponse(message, analysis, transactions) {
         `- **Receita atual:** **${formatBRL(comp.current.revenue)}** (anterior: ${formatBRL(comp.previous.revenue)})\n` +
         `- **Despesas atuais:** **${formatBRL(comp.current.expenses)}** (anterior: ${formatBRL(comp.previous.expenses)})\n` +
         `- **Lucro atual:** **${formatBRL(comp.current.profit)}** (anterior: ${formatBRL(comp.previous.profit)})\n` +
-        `- **Margem atual:** **${comp.current.margin.toFixed(1).replace('.', ',')}%**`
+        `- **Margem atual:** **${comp.current.margin.toFixed(1).replace('.', ',')}%**` +
+        diagnosticNote
       );
     }
   }
@@ -305,7 +323,8 @@ function buildEmergencyResponse(message, analysis, transactions) {
     `- **Despesas:** **${formatBRL(expenses)}**\n` +
     `- **Lucro:** **${formatBRL(profit)}**\n` +
     `- **Margem:** **${margin.toFixed(1).replace('.', ',')}%**\n\n` +
-    `**Pontos de atenção:**\n${alerts}`
+    `**Pontos de atenção:**\n${alerts}` +
+    diagnosticNote
   );
 }
 
@@ -316,8 +335,8 @@ export default async function handler(req, res) {
     });
   }
 
-  const groqKey = process.env.GROQ_API_KEY;
-  const geminiKey = process.env.GEMINI_API_KEY;
+  const groqKey = (process.env.GROQ_API_KEY || '').trim();
+  const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
 
   const { message, analysis, transactions = [], history = [] } = req.body || {};
   if (!message || typeof message !== 'string') {
@@ -657,7 +676,7 @@ ${JSON.stringify(analysis)}
 
   try {
     if (!groqKey) {
-      throw new Error('GROQ_API_KEY ausente');
+      throw new Error('Variável GROQ_API_KEY não encontrada na Vercel (faça Redeploy após salvar).');
     }
 
     for (let step = 0; step < 5; step += 1) {
@@ -740,7 +759,12 @@ ${JSON.stringify(analysis)}
       }
     }
 
-    const emergencyText = buildEmergencyResponse(message, analysis, transactions);
+    const emergencyText = buildEmergencyResponse(
+      message,
+      analysis,
+      transactions,
+      primaryError.message
+    );
     return sendNdjsonResponse(res, emergencyText, pendingAction);
   }
 }
@@ -997,7 +1021,12 @@ async function streamFinalResponse({
         }
       }
       if (!fallbackText) {
-        fallbackText = buildEmergencyResponse(originalMessage, analysis, transactions);
+        fallbackText = buildEmergencyResponse(
+          originalMessage,
+          analysis,
+          transactions,
+          error.message
+        );
       }
       res.write(`${JSON.stringify({ type: 'text', content: fallbackText })}\n`);
       if (pendingAction) {
