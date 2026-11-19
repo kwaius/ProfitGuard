@@ -8,11 +8,10 @@ import {
 } from '../src/ai/aiTools.js';
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODELS = [
-  process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
-  'llama-3.1-8b-instant',
-];
+const GROQ_MODELS_URL = 'https://api.groq.com/openai/v1/models';
 const GEMINI_MODEL = 'gemini-2.5-flash';
+
+let cachedGroqModels = null;
 
 const tools = [
   {
@@ -154,11 +153,64 @@ const tools = [
   },
 ];
 
+async function getAvailableGroqModels(apiKey) {
+  if (Array.isArray(cachedGroqModels) && cachedGroqModels.length > 0) {
+    return cachedGroqModels;
+  }
+
+  const fallbackList = [
+    process.env.GROQ_MODEL,
+    'llama-3.1-8b-instant',
+    'meta-llama/llama-4-scout-17b-16e-instruct',
+    'openai/gpt-oss-20b',
+    'qwen/qwen3-32b',
+  ].filter(Boolean);
+
+  try {
+    const response = await fetch(GROQ_MODELS_URL, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!response.ok) {
+      return fallbackList;
+    }
+
+    const data = await response.json();
+    const ids = (Array.isArray(data?.data) ? data.data : [])
+      .map((item) => item.id)
+      .filter(
+        (id) =>
+          typeof id === 'string' &&
+          !/whisper|tts|playai|guard|orpheus|embed|moderation|compound/i.test(id)
+      );
+
+    if (ids.length === 0) {
+      return fallbackList;
+    }
+
+    const scoreModel = (id) => {
+      if (/llama-4|maverick|70b|120b/i.test(id)) return 1;
+      if (/scout|qwen|gpt-oss|32b|20b/i.test(id)) return 2;
+      if (/8b|instant/i.test(id)) return 3;
+      return 4;
+    };
+
+    const sorted = [...ids].sort((a, b) => scoreModel(a) - scoreModel(b));
+    cachedGroqModels = [...new Set([process.env.GROQ_MODEL, ...sorted].filter(Boolean))];
+    return cachedGroqModels;
+  } catch {
+    return fallbackList;
+  }
+}
+
 async function fetchGroqWithFallback(apiKey, payload) {
-  const uniqueModels = [...new Set(GROQ_MODELS)];
+  const models = await getAvailableGroqModels(apiKey);
   let lastError = null;
 
-  for (const model of uniqueModels) {
+  for (const model of models) {
     let response = await fetch(GROQ_URL, {
       method: 'POST',
       headers: {
@@ -171,7 +223,7 @@ async function fetchGroqWithFallback(apiKey, payload) {
       }),
     });
 
-    // Se a Groq recusar o formato de tools (400), tenta novamente sem tools
+    // Se recusar o formato de tools (400), tenta novamente sem tools no mesmo modelo
     if (!response.ok && response.status === 400 && payload.tools) {
       const { tools: _ignoredTools, tool_choice: _ignoredChoice, ...payloadWithoutTools } = payload;
       response = await fetch(GROQ_URL, {
@@ -194,15 +246,20 @@ async function fetchGroqWithFallback(apiKey, payload) {
     const errorText = await response.text();
     lastError = new Error(`Groq (${model}) HTTP ${response.status}: ${errorText.slice(0, 140)}`);
 
-    if (response.status === 429 || response.status >= 500) {
-      console.warn(`Fallback Groq ativado após falha em ${model} (${response.status})`);
+    if (
+      response.status === 404 ||
+      response.status === 429 ||
+      response.status === 400 ||
+      response.status >= 500
+    ) {
+      console.warn(`Fallback Groq após ${model} (${response.status})`);
       continue;
     }
 
     throw lastError;
   }
 
-  throw lastError || new Error('Falha ao conectar com Groq.');
+  throw lastError || new Error('Nenhum modelo disponível respondeu na Groq.');
 }
 
 async function fetchGeminiBackup(geminiKey, systemPrompt, messages) {
