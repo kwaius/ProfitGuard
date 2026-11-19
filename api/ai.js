@@ -1,6 +1,18 @@
-import { getTopExpenses, getCategoryExpenses, calculateSavings, comparePeriods, detectFinancialTrends, analyzeCategoryTrend, } from '../src/ai/aiTools.js';
+import {
+  getTopExpenses,
+  getCategoryExpenses,
+  calculateSavings,
+  comparePeriods,
+  detectFinancialTrends,
+  analyzeCategoryTrend,
+} from '../src/ai/aiTools.js';
 
-const OLLAMA_URL = 'https://ollama.com/api/chat';
+const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODELS = [
+  process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+  'llama-3.1-8b-instant',
+];
+const GEMINI_MODEL = 'gemini-2.5-flash';
 
 const tools = [
   {
@@ -54,10 +66,7 @@ const tools = [
             description: 'Percentual de redução.',
           },
         },
-        required: [
-          'value',
-          'percentage',
-        ],
+        required: ['value', 'percentage'],
       },
     },
   },
@@ -71,12 +80,9 @@ const tools = [
         properties: {
           period: {
             type: 'string',
-            enum: [
-              'month',
-              '30days',
-              '7days',
-            ],
-            description: 'month compara o mês atual com o anterior; 30days compara os últimos 30 dias com os 30 anteriores; 7days compara os últimos 7 dias com os 7 anteriores.',
+            enum: ['month', '30days', '7days'],
+            description:
+              'month compara o mês atual com o anterior; 30days compara os últimos 30 dias com os 30 anteriores; 7days compara os últimos 7 dias com os 7 anteriores.',
           },
         },
         required: ['period'],
@@ -87,7 +93,8 @@ const tools = [
     type: 'function',
     function: {
       name: 'detect_financial_trends',
-      description: 'Detecta tendências, aumento de despesas, queda de lucro, queda de margem e crescimento de categorias.',
+      description:
+        'Detecta tendências, aumento de despesas, queda de lucro, queda de margem e crescimento de categorias.',
       parameters: {
         type: 'object',
         properties: {},
@@ -99,7 +106,8 @@ const tools = [
     type: 'function',
     function: {
       name: 'analyze_category_trend',
-      description: 'Compara uma categoria entre períodos e mostra as principais transações que contribuíram para a mudança.',
+      description:
+        'Compara uma categoria entre períodos e mostra as principais transações que contribuíram para a mudança.',
       parameters: {
         type: 'object',
         properties: {
@@ -109,18 +117,11 @@ const tools = [
           },
           period: {
             type: 'string',
-            enum: [
-              'month',
-              '30days',
-              '7days',
-            ],
+            enum: ['month', '30days', '7days'],
             description: 'Período da comparação.',
           },
         },
-        required: [
-          'category',
-          'period',
-        ],
+        required: ['category', 'period'],
       },
     },
   },
@@ -128,7 +129,8 @@ const tools = [
     type: 'function',
     function: {
       name: 'filter_transactions',
-      description: 'Cria uma sugestão para filtrar as transações. A ação depende da confirmação do usuário.',
+      description:
+        'Cria uma sugestão para filtrar as transações. A ação depende da confirmação do usuário.',
       parameters: {
         type: 'object',
         properties: {
@@ -138,11 +140,7 @@ const tools = [
           },
           type: {
             type: 'string',
-            enum: [
-              'income',
-              'expense',
-              'all',
-            ],
+            enum: ['income', 'expense', 'all'],
             description: 'Tipo da transação.',
           },
           search: {
@@ -150,15 +148,166 @@ const tools = [
             description: 'Texto da busca.',
           },
         },
-        required: [
-          'category',
-          'type',
-          'search',
-        ],
+        required: ['category', 'type', 'search'],
       },
     },
   },
 ];
+
+async function fetchGroqWithFallback(apiKey, payload) {
+  const uniqueModels = [...new Set(GROQ_MODELS)];
+  let lastError = null;
+
+  for (const model of uniqueModels) {
+    const response = await fetch(GROQ_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        ...payload,
+        model,
+      }),
+    });
+
+    if (response.ok) {
+      return response;
+    }
+
+    const errorText = await response.text();
+    lastError = new Error(`Groq API (${model}) ${response.status}: ${errorText}`);
+
+    if (response.status === 429 || response.status >= 500) {
+      console.warn(`Fallback Groq ativado após falha em ${model} (${response.status})`);
+      continue;
+    }
+
+    throw lastError;
+  }
+
+  throw lastError || new Error('Falha ao conectar com Groq.');
+}
+
+async function fetchGeminiBackup(geminiKey, systemPrompt, messages) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`;
+
+  const contents = messages
+    .filter((m) => m.role === 'user' || m.role === 'assistant')
+    .map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }],
+    }));
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: {
+        parts: [{ text: systemPrompt }],
+      },
+      contents,
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 2048,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini Backup ${response.status}: ${errorText}`);
+  }
+
+  const data = await response.json();
+  const text = data?.candidates?.[0]?.content?.parts
+    ?.map((part) => part.text || '')
+    .join('')
+    .trim();
+
+  if (!text) {
+    throw new Error('Gemini Backup retornou resposta vazia.');
+  }
+
+  return text;
+}
+
+function sendNdjsonResponse(res, text, pendingAction = null) {
+  if (!res.headersSent) {
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+  }
+  res.write(`${JSON.stringify({ type: 'text', content: text })}\n`);
+  if (pendingAction) {
+    res.write(`${JSON.stringify({ type: 'action', action: pendingAction })}\n`);
+  }
+  res.end();
+}
+
+function formatBRL(value) {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(Number(value) || 0);
+}
+
+function buildEmergencyResponse(message, analysis, transactions) {
+  const text = String(message || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  const revenue = Number(analysis?.revenue || 0);
+  const expenses = Number(analysis?.expenses || 0);
+  const profit = Number(analysis?.profit ?? revenue - expenses);
+  const margin = Number(analysis?.margin || 0);
+
+  if (text.includes('maior despesa') || text.includes('maiores despesas')) {
+    const top = getTopExpenses(transactions, 5);
+    if (top.length > 0) {
+      const list = top
+        .map(
+          (item, i) =>
+            `${i + 1}. **${item.description || 'Despesa'}** (${item.category || 'Geral'}): **${formatBRL(item.value)}**`
+        )
+        .join('\n');
+      return `📊 Aqui estão as suas maiores despesas registradas:\n\n${list}`;
+    }
+  }
+
+  if (text.includes('aumentaram') || text.includes('compar') || text.includes('lucro caiu')) {
+    const comp = comparePeriods(transactions, 'month');
+    if (!comp.error) {
+      return (
+        `📊 **Comparação do período atual com o anterior:**\n\n` +
+        `- **Receita atual:** **${formatBRL(comp.current.revenue)}** (anterior: ${formatBRL(comp.previous.revenue)})\n` +
+        `- **Despesas atuais:** **${formatBRL(comp.current.expenses)}** (anterior: ${formatBRL(comp.previous.expenses)})\n` +
+        `- **Lucro atual:** **${formatBRL(comp.current.profit)}** (anterior: ${formatBRL(comp.previous.profit)})\n` +
+        `- **Margem atual:** **${comp.current.margin.toFixed(1).replace('.', ',')}%**`
+      );
+    }
+  }
+
+  const trends = detectFinancialTrends(transactions);
+  const alerts =
+    Array.isArray(trends?.alerts) && trends.alerts.length > 0
+      ? trends.alerts.map((a) => `- 🟡 ${a.message}`).join('\n')
+      : Array.isArray(analysis?.alerts) && analysis.alerts.length > 0
+        ? analysis.alerts.map((a) => `- 🟡 ${a.message}`).join('\n')
+        : '- 🟢 Nenhum alerta crítico detectado nos lançamentos atuais.';
+
+  return (
+    `📊 **Resumo das suas finanças:**\n\n` +
+    `- **Receita:** **${formatBRL(revenue)}**\n` +
+    `- **Despesas:** **${formatBRL(expenses)}**\n` +
+    `- **Lucro:** **${formatBRL(profit)}**\n` +
+    `- **Margem:** **${margin.toFixed(1).replace('.', ',')}%**\n\n` +
+    `**Pontos de atenção:**\n${alerts}`
+  );
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -166,20 +315,18 @@ export default async function handler(req, res) {
       error: 'Método não permitido.',
     });
   }
-  if (!process.env.OLLAMA_API_KEY) {
-    return res.status(500).json({
-      error: 'A chave do Ollama Cloud não está configurada.',
+
+  const groqKey = process.env.GROQ_API_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY;
+
+  const { message, analysis, transactions = [], history = [] } = req.body || {};
+  if (!message || typeof message !== 'string') {
+    return res.status(400).json({
+      error: 'Mensagem inválida.',
     });
   }
-  try {
-    const { message, analysis, transactions = [], history = [], } = req.body;
-    if (!message ||
-      typeof message !== 'string') {
-      return res.status(400).json({
-        error: 'Mensagem inválida.',
-      });
-    }
-    const systemPrompt = `
+
+  const systemPrompt = `
 Você é o ProfitGuard AI.
 
 IDENTIDADE:
@@ -204,6 +351,9 @@ Não mencione:
 - OpenAI;
 - Ollama;
 - Ollama Cloud;
+- Groq;
+- Gemini;
+- Llama;
 - Qwen;
 - gpt-oss;
 - modelos de linguagem;
@@ -468,104 +618,98 @@ Se a pergunta pedir produtos ou países para exportar e "pesquisaDeExportacao" n
 
 CONTEXTO FINANCEIRO
 
-
-${JSON.stringify(
-  analysis,
-  null,
-  2
-)}
+${JSON.stringify(analysis)}
 `;
-    const conversation = Array.isArray(history)
-      ? history
-        .filter((item) => item.role === 'user' ||
-          item.role ===
-          'assistant')
-        .slice(-10)
+
+  const conversation = Array.isArray(history)
+    ? history
+        .filter((item) => item.role === 'user' || item.role === 'assistant')
+        .slice(-4)
         .map((item) => ({
           role: item.role,
-          content: typeof item.content ===
-            'string'
-            ? item.content
-            : '',
+          content: typeof item.content === 'string' ? item.content : '',
         }))
-      : [];
-    let messages = [
-      {
-        role: 'system',
-        content: systemPrompt,
-      },
-      ...conversation,
-      {
-        role: 'user',
-        content: message,
-      },
-    ];
-    let pendingAction = null;
-    const requiredTools = detectRequiredTools(message);
-    for (const toolName of requiredTools) {
-      const args = buildToolArguments(toolName, message);
-      const result = executeServerTool(toolName, args, transactions);
-      console.log('ProfitGuard AI - ferramenta forçada:', toolName, args);
-      messages.push({
-        role: 'user',
-        content: `DADOS VERIFICADOS DA FERRAMENTA ${toolName}:\n${JSON.stringify(
-            result,
-            null,
-            2
-          )}`,
-      });
+    : [];
+
+  let messages = [
+    {
+      role: 'system',
+      content: systemPrompt,
+    },
+    ...conversation,
+    {
+      role: 'user',
+      content: message,
+    },
+  ];
+
+  let pendingAction = null;
+  const requiredTools = detectRequiredTools(message);
+
+  for (const toolName of requiredTools) {
+    const args = buildToolArguments(toolName, message);
+    const result = executeServerTool(toolName, args, transactions);
+    messages.push({
+      role: 'user',
+      content: `DADOS VERIFICADOS DA FERRAMENTA ${toolName}: ${JSON.stringify(result)}`,
+    });
+  }
+
+  try {
+    if (!groqKey) {
+      throw new Error('GROQ_API_KEY ausente');
     }
-    for (let step = 0;step < 5;step += 1) {
-      const response = await fetch(OLLAMA_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.OLLAMA_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-oss:20b',
-          stream: false,
-          think: false,
-          options: {
-            num_predict: 2048,
-            temperature: 0.2,
-          },
-          messages,
-          tools,
-        }),
+
+    for (let step = 0; step < 5; step += 1) {
+      const response = await fetchGroqWithFallback(groqKey, {
+        stream: false,
+        max_tokens: 2048,
+        temperature: 0.2,
+        messages,
+        tools,
+        tool_choice: 'auto',
       });
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Ollama Cloud ${response.status}: ${errorText}`);
-      }
+
       const data = await response.json();
-      const assistantMessage = data.message;
-      if (!assistantMessage?.tool_calls ||
-        assistantMessage.tool_calls
-          .length === 0) {
-        return streamFinalResponse({
+      const assistantMessage = data.choices?.[0]?.message;
+
+      if (!assistantMessage?.tool_calls || assistantMessage.tool_calls.length === 0) {
+        return await streamFinalResponse({
           res,
           messages,
           pendingAction,
+          groqKey,
+          geminiKey,
+          systemPrompt,
+          analysis,
+          transactions,
+          originalMessage: message,
         });
       }
+
       messages.push(assistantMessage);
+
       for (const toolCall of assistantMessage.tool_calls) {
         const name = toolCall.function?.name;
-        const args = toolCall.function?.arguments ||
-          {};
-        console.log('ProfitGuard AI - ferramenta:', name, args);
+        let args = {};
+        if (typeof toolCall.function?.arguments === 'string') {
+          try {
+            args = JSON.parse(toolCall.function.arguments);
+          } catch {
+            args = {};
+          }
+        } else if (toolCall.function?.arguments) {
+          args = toolCall.function.arguments;
+        }
+
         let result = executeServerTool(name, args, transactions);
-        if (name ===
-          'filter_transactions') {
+
+        if (name === 'filter_transactions') {
           pendingAction = {
             type: 'filter_transactions',
-            category: args.category ||
-              'all',
-            transactionType: args.type ||
-              'all',
-            search: args.search ||
-              '',
+            category: args.category || 'all',
+            transactionType: args.type || 'all',
+            search: args.search || '',
           };
           result = {
             success: true,
@@ -573,24 +717,31 @@ ${JSON.stringify(
             action: pendingAction,
           };
         }
+
         messages.push({
-          role: 'user',
-          content: `DADOS VERIFICADOS DA FERRAMENTA ${name}:\n${JSON.stringify(
-              result,
-              null,
-              2
-            )}`,
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          name,
+          content: JSON.stringify(result),
         });
       }
     }
-    throw new Error('A IA excedeu o limite de chamadas de ferramentas.');
-  }
-  catch (error) {
-    console.error('ProfitGuard AI error:', error);
-    return res.status(500).json({
-      error: error.message ||
-        'Erro interno na IA.',
-    });
+
+    throw new Error('Limite de chamadas de ferramentas atingido.');
+  } catch (primaryError) {
+    console.warn('Acionando backup após erro na rota principal:', primaryError.message);
+
+    if (geminiKey) {
+      try {
+        const backupText = await fetchGeminiBackup(geminiKey, systemPrompt, messages);
+        return sendNdjsonResponse(res, backupText, pendingAction);
+      } catch (geminiError) {
+        console.warn('Backup Gemini também falhou:', geminiError.message);
+      }
+    }
+
+    const emergencyText = buildEmergencyResponse(message, analysis, transactions);
+    return sendNdjsonResponse(res, emergencyText, pendingAction);
   }
 }
 
@@ -599,8 +750,11 @@ function detectRequiredTools(message) {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
+
   const requiredTools = [];
-  const asksProfitChange = text.includes('lucro caiu') ||
+
+  const asksProfitChange =
+    text.includes('lucro caiu') ||
     text.includes('lucro diminuiu') ||
     text.includes('lucro aumentou') ||
     (text.includes('meu lucro') &&
@@ -609,14 +763,17 @@ function detectRequiredTools(message) {
         text.includes('caiu') ||
         text.includes('diminuiu') ||
         text.includes('aumentou')));
-  const asksGeneralAnalysis = text.includes('como estao minhas financas') ||
+
+  const asksGeneralAnalysis =
+    text.includes('como estao minhas financas') ||
     text.includes('o que merece minha atencao') ||
     text.includes('existe algum problema') ||
     text.includes('faca uma analise') ||
     text.includes('quais sao os riscos') ||
     text.includes('tem algo estranho');
-  const asksCategoryReason = (text.includes('por que') ||
-    text.includes('porque')) &&
+
+  const asksCategoryReason =
+    (text.includes('por que') || text.includes('porque')) &&
     (text.includes('estoque') ||
       text.includes('fornecedores') ||
       text.includes('contas') ||
@@ -624,37 +781,43 @@ function detectRequiredTools(message) {
       text.includes('marketing') ||
       text.includes('impostos') ||
       text.includes('categoria'));
-  const asksTopExpenses = text.includes('maior despesa') ||
+
+  const asksTopExpenses =
+    text.includes('maior despesa') ||
     text.includes('maiores despesas') ||
     text.includes('maior gasto') ||
     text.includes('maiores gastos');
+
   if (asksProfitChange) {
     requiredTools.push('compare_periods');
-    if (text.includes('por que') ||
+    if (
+      text.includes('por que') ||
       text.includes('porque') ||
       text.includes('fatores') ||
       text.includes('motivos') ||
-      text.includes('contribuiram')) {
+      text.includes('contribuiram')
+    ) {
       requiredTools.push('detect_financial_trends');
     }
   }
+
   if (asksGeneralAnalysis) {
     requiredTools.push('detect_financial_trends');
   }
+
   if (asksCategoryReason) {
     requiredTools.push('analyze_category_trend');
   }
+
   if (asksTopExpenses) {
     requiredTools.push('get_top_expenses');
   }
-  return [
-    ...new Set(requiredTools),
-  ];
+
+  return [...new Set(requiredTools)];
 }
 
 function buildToolArguments(toolName, message) {
-  if (toolName ===
-    'analyze_category_trend') {
+  if (toolName === 'analyze_category_trend') {
     return {
       category: extractCategory(message),
       period: 'month',
@@ -683,136 +846,164 @@ function extractCategory(message) {
 }
 
 function executeServerTool(name, args, transactions) {
-  if (name ===
-    'get_top_expenses') {
+  if (name === 'get_top_expenses') {
     const limit = Math.min(Math.max(Number(args.limit) || 5, 1), 10);
     return getTopExpenses(transactions, limit);
   }
-  if (name ===
-    'get_category_expenses') {
+  if (name === 'get_category_expenses') {
     return getCategoryExpenses(transactions, args.category || '');
   }
-  if (name ===
-    'calculate_savings') {
+  if (name === 'calculate_savings') {
     return calculateSavings(Number(args.value) || 0, Number(args.percentage) || 0);
   }
-  if (name ===
-    'compare_periods') {
-    return comparePeriods(transactions, args.period ||
-      'month');
+  if (name === 'compare_periods') {
+    return comparePeriods(transactions, args.period || 'month');
   }
-  if (name ===
-    'detect_financial_trends') {
+  if (name === 'detect_financial_trends') {
     return detectFinancialTrends(transactions);
   }
-  if (name ===
-    'analyze_category_trend') {
-    return analyzeCategoryTrend(transactions, args.category ||
-      '', args.period ||
-    'month');
+  if (name === 'analyze_category_trend') {
+    return analyzeCategoryTrend(transactions, args.category || '', args.period || 'month');
   }
   return {
     error: 'Ferramenta desconhecida.',
   };
 }
 
-async function streamFinalResponse({ res, messages, pendingAction, }) {
+async function streamFinalResponse({
+  res,
+  messages,
+  pendingAction,
+  groqKey,
+  geminiKey,
+  systemPrompt,
+  analysis,
+  transactions,
+  originalMessage,
+}) {
   res.statusCode = 200;
   res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders?.();
+
   let requestMessages = [...messages];
   let continuationCount = 0;
+  let totalWritten = '';
+
   try {
     while (continuationCount <= 1) {
-      const response = await fetch(OLLAMA_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.OLLAMA_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-oss:20b',
-          stream: true,
-          think: false,
-          options: { num_predict: 2048, temperature: 0.2 },
-          messages: requestMessages,
-        }),
+      const response = await fetchGroqWithFallback(groqKey, {
+        stream: true,
+        max_tokens: 2048,
+        temperature: 0.2,
+        messages: requestMessages,
       });
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Ollama Cloud ${response.status}: ${errorText}`);
+
+      if (!response.body) {
+        throw new Error('A IA não retornou um stream.');
       }
-      if (!response.body)
-        throw new Error('Ollama não retornou um stream.');
+
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
       let passText = '';
       let doneReason = '';
+
       const processLine = (line) => {
-        if (!line.trim())
-          return;
-        const data = JSON.parse(line);
-        const chunk = data?.message?.content;
+        const trimmedLine = line.trim();
+        if (!trimmedLine || !trimmedLine.startsWith('data:')) return;
+
+        const payload = trimmedLine.replace(/^data:\s*/, '');
+        if (payload === '[DONE]') return;
+
+        const data = JSON.parse(payload);
+        const choice = data?.choices?.[0];
+        const chunk = choice?.delta?.content;
+
         if (chunk) {
           passText += chunk;
+          totalWritten += chunk;
           res.write(`${JSON.stringify({ type: 'text', content: chunk })}\n`);
         }
-        if (data?.done)
-          doneReason = data.done_reason || '';
+
+        if (choice?.finish_reason) {
+          doneReason = choice.finish_reason;
+        }
       };
+
       while (true) {
         const { value, done } = await reader.read();
-        if (done)
-          break;
+        if (done) break;
+
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
+
         for (const line of lines) {
           try {
             processLine(line);
-          }
-          catch (error) {
-            if (error instanceof SyntaxError)
-              continue;
+          } catch (error) {
+            if (error instanceof SyntaxError) continue;
             throw error;
           }
         }
       }
-      // Processa o último objeto mesmo quando o stream não termina com newline.
+
       if (buffer.trim()) {
         try {
           processLine(buffer);
-        }
-        catch (error) {
-          if (!(error instanceof SyntaxError))
-            throw error;
+        } catch (error) {
+          if (!(error instanceof SyntaxError)) throw error;
         }
       }
+
       const trimmed = passText.trimEnd();
       const boldMarkers = (trimmed.match(/\*\*/g) || []).length;
-      const openCodeFence = ((trimmed.match(/```/g) || []).length % 2) === 1;
-      const shouldContinue = continuationCount === 0 && passText.trim()
-        && (doneReason === 'length' || boldMarkers % 2 === 1 || openCodeFence);
-      if (!shouldContinue)
-        break;
+      const openCodeFence = (trimmed.match(/```/g) || []).length % 2 === 1;
+      const shouldContinue =
+        continuationCount === 0 &&
+        passText.trim() &&
+        (doneReason === 'length' || boldMarkers % 2 === 1 || openCodeFence);
+
+      if (!shouldContinue) break;
+
       requestMessages = [
         ...requestMessages,
         { role: 'assistant', content: passText },
-        { role: 'user', content: 'Continue a resposta anterior exatamente de onde ela parou. Não repita o que já foi escrito, conclua os tópicos pendentes e termine as frases e a formatação.' },
+        {
+          role: 'user',
+          content:
+            'Continue a resposta anterior exatamente de onde ela parou. Não repita o que já foi escrito, conclua os tópicos pendentes e termine as frases e a formatação.',
+        },
       ];
       continuationCount += 1;
     }
+
     if (pendingAction) {
       res.write(`${JSON.stringify({ type: 'action', action: pendingAction })}\n`);
     }
+
     res.end();
-  }
-  catch (error) {
-    console.error('Streaming error:', error);
-    res.write(`${JSON.stringify({ type: 'error', message: error.message || 'Erro no streaming da IA.' })}\n`);
+  } catch (error) {
+    console.warn('Streaming fallback acionado:', error.message);
+    if (!totalWritten.trim()) {
+      let fallbackText = '';
+      if (geminiKey) {
+        try {
+          fallbackText = await fetchGeminiBackup(geminiKey, systemPrompt, messages);
+        } catch {
+          fallbackText = '';
+        }
+      }
+      if (!fallbackText) {
+        fallbackText = buildEmergencyResponse(originalMessage, analysis, transactions);
+      }
+      res.write(`${JSON.stringify({ type: 'text', content: fallbackText })}\n`);
+      if (pendingAction) {
+        res.write(`${JSON.stringify({ type: 'action', action: pendingAction })}\n`);
+      }
+    }
     res.end();
   }
 }
